@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
 import html2canvas from 'html2canvas';
-import { AppTheme, DynamicElement, DynamicElementType } from './types';
+import { AppTheme, DynamicElement, DynamicElementType, User } from './types';
 import { ChatInterface } from './components/ChatInterface';
 import { SettingsModal } from './components/SettingsModal';
 import { DynamicInjector } from './components/DynamicElements';
 import { WelcomeModal } from './components/WelcomeModal';
 import { generateLayoutFromImage, generateWidgetHTML, refineHtml, initializeGemini } from './services/geminiService';
-import { Plus, X, Zap, AlertTriangle, ShieldAlert, Terminal, Sparkles, Send, Loader2, Code2, RefreshCw, Camera } from 'lucide-react';
+import { subscribeToAuthChanges, saveLayout, signInWithGoogle } from './services/firebase';
+import { Plus, X, Zap, AlertTriangle, ShieldAlert, Terminal, Sparkles, Send, Loader2, Code2, RefreshCw, Camera, Save, LogIn } from 'lucide-react';
 
 const App: React.FC = () => {
   const [theme, setTheme] = useState<AppTheme>(AppTheme.Gemini);
@@ -17,6 +18,7 @@ const App: React.FC = () => {
   const [customPrompt, setCustomPrompt] = useState('');
   const [isProcessingCustom, setIsProcessingCustom] = useState(false);
   const [isGeneratingLayout, setIsGeneratingLayout] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   
   // Custom Cloned Layout
   const [customLayoutHtml, setCustomLayoutHtml] = useState<string | null>(null);
@@ -28,6 +30,17 @@ const App: React.FC = () => {
 
   // Welcome Modal State
   const [showWelcome, setShowWelcome] = useState(true);
+
+  // Save Layout State
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthChanges((u) => {
+       // @ts-ignore - firebase user type mapping
+       setUser(u);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const toggleSettings = () => setIsSettingsOpen(!isSettingsOpen);
   
@@ -59,6 +72,48 @@ const App: React.FC = () => {
           } finally {
               controls.forEach(el => el.classList.remove('opacity-0'));
           }
+      }
+  };
+
+  const handleSaveLayout = async () => {
+      if (!customLayoutHtml) return;
+
+      if (!user) {
+          if (confirm("You need to sign in to save layouts. Sign in with Google now?")) {
+              try {
+                await signInWithGoogle();
+              } catch (e) {
+                  return; // User cancelled or failed
+              }
+          } else {
+              return;
+          }
+      }
+
+      // Check user again after potential sign in
+      // We rely on auth state listener, but for immediate flow we might need to wait or just re-trigger
+      // Simplified: If user was null, we triggered sign in. The listener updates `user`. 
+      // User might need to click save again if the state update is async/detached.
+      // But let's assume if they just signed in, they are persistent. 
+      
+      const name = prompt("Enter a name for this layout:", "My Custom UI");
+      if (name) {
+          setIsSaving(true);
+          try {
+              // We need the current user ID. If user state hasn't updated yet, we might fail.
+              // In a real app we'd await the auth state.
+              if (user) {
+                  await saveLayout(user.uid, name, customLayoutHtml);
+                  alert("Layout saved successfully!");
+              } else {
+                  // Fallback if state update is lagging, though rare with popup await
+                  alert("Please try clicking save again now that you are signed in.");
+              }
+          } catch (error) {
+              alert("Failed to save layout.");
+              console.error(error);
+          }
+          setIsSaving(false);
       }
   };
   
@@ -111,6 +166,12 @@ const App: React.FC = () => {
       setCustomLayoutHtml(null);
       setTheme(newTheme);
       setShowRefineBar(false);
+  };
+
+  const handleLoadLayout = (html: string) => {
+      setCustomLayoutHtml(html);
+      setTheme(AppTheme.Custom);
+      setShowRefineBar(true);
   };
 
   if (showWelcome) {
@@ -170,6 +231,18 @@ const App: React.FC = () => {
                   )}
 
                   <div className="flex gap-3">
+                    {/* Save Button */}
+                    <button 
+                        onClick={handleSaveLayout} 
+                        className={`p-3 rounded-full shadow-lg border transition-all hover:scale-105 flex items-center justify-center gap-2
+                            bg-green-600 text-white border-green-600 hover:bg-green-700
+                        `}
+                        disabled={isSaving}
+                        title="Save Layout"
+                    >
+                        {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                    </button>
+
                     <button 
                         onClick={() => setShowRefineBar(!showRefineBar)} 
                         className={`p-3 rounded-full shadow-lg border transition-all hover:scale-105 flex items-center justify-center gap-2
@@ -217,6 +290,8 @@ const App: React.FC = () => {
         setTheme={resetToPreset}
         onImportImage={handleImportImage}
         isGenerating={isGeneratingLayout}
+        onLoadLayout={handleLoadLayout}
+        user={user}
       />
 
       {/* Add Menu Popup */}

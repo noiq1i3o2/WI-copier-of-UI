@@ -37,3 +37,19 @@ export interface UIRequest {
   icon: string;
   html?: string;
 }
+
+export interface SavedLayout {
+  id: string;
+  userId: string;
+  name: string;
+  html: string;
+  createdAt: number;
+  thumbnail?: string; // Optional base64 thumbnail
+}
+
+export interface User {
+  uid: string;
+  displayName: string | null;
+  photoURL: string | null;
+  email: string | null;
+}
