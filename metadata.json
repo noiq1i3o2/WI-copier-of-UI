@@ -1,0 +1,5 @@
+{
+  "name": "AI copier of UI",
+  "description": "A high-fidelity simulator of Gemini, ChatGPT, and Claude interfaces with dynamic UI generation capabilities powered by the Gemini API.",
+  "requestFramePermissions": []
+}
